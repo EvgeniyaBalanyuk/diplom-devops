@@ -3,41 +3,37 @@ pipeline {
 
     environment {
         DOCKER_HUB_CREDENTIALS = credentials('docker-hub')
-        IMAGE_NAME = 'evgeniyabal/custom-nginx'
+        IMAGE_NAME = 'evgeniyabal/diplom_devops'
     }
 
     triggers {
-        pollSCM('* * * * *') // Проверка каждую минуту (или webhook)
+        pollSCM('H/2 * * * *') // проверка репозитория каждые 2 минуты
     }
 
     stages {
-        stage('Clone repository') {
+        stage('Checkout') {
             steps {
-                git credentialsId: 'github-token', url: 'https://github.com/EvgeniyaBalanyuk/', branch: 'main'
+                git credentialsId: 'github-token',
+                    url: 'https://github.com/EvgeniyaBalanyuk/diplom-devops.git',
+                    branch: 'main'
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                script {
-                    sh "docker build -t $IMAGE_NAME:latest ."
-                }
+                sh 'docker build -t $IMAGE_NAME:latest .'
             }
         }
 
         stage('Login to Docker Hub') {
             steps {
-                script {
-                    sh "echo $DOCKER_HUB_CREDENTIALS_PSW | docker login -u $DOCKER_HUB_CREDENTIALS_USR --password-stdin"
-                }
+                sh 'echo $DOCKER_HUB_CREDENTIALS_PSW | docker login -u $DOCKER_HUB_CREDENTIALS_USR --password-stdin'
             }
         }
 
-        stage('Push Image') {
+        stage('Push Docker Image') {
             steps {
-                script {
-                    sh "docker push $IMAGE_NAME:latest"
-                }
+                sh 'docker push $IMAGE_NAME:latest'
             }
         }
     }
