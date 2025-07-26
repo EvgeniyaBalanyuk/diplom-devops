@@ -1,0 +1,42 @@
+---
+- name: Присоединение worker-ов к кластеру
+  hosts: workers
+  become: true
+  tasks:
+    - name: Загрузить модуль br_netfilter
+      modprobe:
+        name: br_netfilter
+        state: present
+
+    - name: Настроить sysctl
+      sysctl:
+        name: net.bridge.bridge-nf-call-iptables
+        value: 1
+        state: present
+        reload: yes
+
+    - name: Получить join-скрипт с мастера
+      fetch:
+        src: /tmp/kube_join.sh
+        dest: /tmp/kube_join.sh
+        flat: yes
+      delegate_to: master
+      run_once: true
+
+    - name: Копировать join-скрипт на worker
+      copy:
+        src: /tmp/kube_join.sh
+        dest: /tmp/kube_join.sh
+        mode: '0755'
+
+    - name: Включить IP forwarding на worker-нодах
+      sysctl:
+        name: net.ipv4.ip_forward
+        value: '1'
+        sysctl_set: yes
+        state: present
+        reload: yes
+
+
+    - name: Выполнить join-скрипт
+      command: bash /tmp/kube_join.sh

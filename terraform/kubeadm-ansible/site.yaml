@@ -1,0 +1,6 @@
+---
+- import_playbook: 01_setup_dependencies.yml
+- import_playbook: 02_install_kubernetes.yml
+- import_playbook: 03_init_master.yml
+- import_playbook: 04_join_workers.yml
+- import_playbook: 05_install_cni.yml

@@ -1,0 +1,86 @@
+---
+- name: Установка зависимостей и containerd (корректная)
+  hosts: all
+  become: true
+  tasks:
+
+    - name: Отключить swap временно
+      shell: swapoff -a
+      when: ansible_swaptotal_mb > 0
+
+    - name: Отключить swap навсегда
+      replace:
+        path: /etc/fstab
+        regexp: '^([^#].*swap)'
+        replace: '# \1'
+
+    - name: Установить зависимости
+      apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - curl
+          - gnupg
+          - lsb-release
+        state: present
+        update_cache: true
+
+    - name: Удалить устаревший containerd.io (если есть)
+      apt:
+        name: containerd.io
+        state: absent
+      ignore_errors: true
+
+    - name: Установить containerd из стандартных репозиториев Ubuntu
+      apt:
+        name: containerd
+        state: latest
+        update_cache: true
+
+    - name: Создать директорию /etc/containerd если не существует
+      file:
+        path: /etc/containerd
+        state: directory
+        mode: '0755'
+
+    - name: Создать новый config.toml с поддержкой CRI
+      copy:
+        dest: /etc/containerd/config.toml
+        content: |
+          version = 2
+
+          [plugins."io.containerd.grpc.v1.cri"]
+            sandbox_image = "registry.k8s.io/pause:3.9"
+
+            [plugins."io.containerd.grpc.v1.cri".containerd]
+              snapshotter = "overlayfs"
+              no_pivot = false
+
+              [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+                runtime_type = "io.containerd.runc.v2"
+
+                [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
+                  SystemdCgroup = true
+
+    - name: Перезапустить containerd
+      systemd:
+        name: containerd
+        daemon_reload: true
+        state: restarted
+        enabled: true
+
+    - name: Установить crictl
+      shell: |
+        VERSION="v1.29.0"
+        curl -sSL -o /tmp/crictl.tar.gz https://github.com/kubernetes-sigs/cri-tools/releases/download/${VERSION}/crictl-${VERSION}-linux-amd64.tar.gz
+        tar -C /usr/local/bin -xzvf /tmp/crictl.tar.gz
+        chmod +x /usr/local/bin/crictl
+      args:
+        creates: /usr/local/bin/crictl
+
+    - name: Проверка CRI работает (crictl info)
+      command: crictl info
+      register: crictl_output
+      retries: 5
+      delay: 5
+      until: crictl_output.rc == 0

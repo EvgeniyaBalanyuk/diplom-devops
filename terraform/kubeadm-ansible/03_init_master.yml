@@ -1,0 +1,52 @@
+---
+- name: Инициализация мастера Kubernetes
+  hosts: masters
+  become: true
+  vars:
+    kubeconfig_path: /etc/kubernetes/admin.conf
+  tasks:
+    - name: Загрузить модуль br_netfilter
+      modprobe:
+        name: br_netfilter
+        state: present
+
+    - name: Настроить sysctl
+      sysctl:
+        name: net.bridge.bridge-nf-call-iptables
+        value: 1
+        state: present
+        reload: yes
+
+    - name: Сбросить предыдущую установку Kubernetes
+      shell: |
+        kubeadm reset -f
+        rm -rf /etc/cni/net.d /var/lib/etcd /etc/kubernetes/manifests
+      ignore_errors: true
+
+    - name: Включить IP forwarding
+      sysctl:
+        name: net.ipv4.ip_forward
+        value: '1'
+        sysctl_set: yes
+        state: present
+        reload: yes
+
+
+    - name: Инициализировать кластер
+      command: kubeadm init --pod-network-cidr=192.168.0.0/16
+      register: init_output
+
+    - name: Скопировать kubeconfig для пользователя
+      shell: |
+        mkdir -p /home/{{ ansible_user }}/.kube
+        cp -i {{ kubeconfig_path }} /home/{{ ansible_user }}/.kube/config
+        chown {{ ansible_user }}:{{ ansible_user }} /home/{{ ansible_user }}/.kube/config
+
+    - name: Сохранить join-команду в файл
+      shell: kubeadm token create --print-join-command > /tmp/kube_join.sh
+      when: init_output.rc == 0
+
+    - name: Установить права на файл join
+      file:
+        path: /tmp/kube_join.sh
+        mode: '0755'

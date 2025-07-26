@@ -1,0 +1,18 @@
+---
+- name: Установка сетевого плагина Calico
+  hosts: masters
+  become: true
+  tasks:
+    - name: Подождать, пока kube-apiserver станет доступен
+      shell: kubectl get nodes
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf
+      register: result
+      retries: 10
+      delay: 10
+      until: result.rc == 0
+
+    - name: Установить Calico CNI
+      command: kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.1/manifests/calico.yaml
+      environment:
+        KUBECONFIG: /etc/kubernetes/admin.conf

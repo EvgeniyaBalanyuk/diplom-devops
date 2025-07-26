@@ -1,0 +1,62 @@
+- name: Install kube-prometheus-stack to Kubernetes
+  hosts: masters
+  become: true
+  gather_facts: no
+
+  vars:
+    namespace: monitoring
+    release_name: kube-prometheus-stack
+    chart_name: prometheus-community/kube-prometheus-stack
+    values_file: monitoring-values.yaml
+    kubeconfig_path: /etc/kubernetes/admin.conf
+
+  tasks:
+
+    - name: Check if Helm is installed
+      ansible.builtin.shell: which helm
+      register: helm_path
+      ignore_errors: true
+
+    - name: Download Helm installer
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+        dest: /tmp/get_helm.sh
+        mode: '0755'
+      when: helm_path.rc != 0
+
+    - name: Run Helm installer
+      ansible.builtin.shell: /tmp/get_helm.sh
+      when: helm_path.rc != 0
+
+    - name: Add prometheus-community Helm repo
+      ansible.builtin.command: >
+        helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+      register: add_repo
+      changed_when: "'already exists' not in add_repo.stdout"
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+
+    - name: Update Helm repositories
+      ansible.builtin.command: helm repo update
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+
+    - name: Create namespace if not exists
+      ansible.builtin.command: kubectl create namespace {{ namespace }}
+      register: create_ns
+      failed_when: create_ns.rc != 0 and 'AlreadyExists' not in create_ns.stderr
+      changed_when: "'created' in create_ns.stdout"
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"
+
+    - name: Copy monitoring-values.yaml to remote
+      ansible.builtin.copy:
+        src: files/{{ values_file }}
+        dest: /tmp/{{ values_file }}
+
+    - name: Install or upgrade Prometheus Stack
+      ansible.builtin.command: >
+        helm upgrade --install {{ release_name }} {{ chart_name }}
+        -n {{ namespace }} -f /tmp/{{ values_file }} --create-namespace
+      environment:
+        KUBECONFIG: "{{ kubeconfig_path }}"

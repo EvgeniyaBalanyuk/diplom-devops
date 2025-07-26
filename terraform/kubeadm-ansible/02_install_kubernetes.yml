@@ -1,0 +1,48 @@
+---
+- name: Установка Kubernetes
+  hosts: all
+  become: true
+  tasks:
+    - name: Создать каталог для ключей APT
+      file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Добавить GPG-ключ Kubernetes
+      shell: |
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | \
+        gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      args:
+        creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    - name: Добавить репозиторий Kubernetes
+      copy:
+        dest: /etc/apt/sources.list.d/kubernetes.list
+        content: |
+          deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /
+
+    - name: Обновить apt
+      apt:
+        update_cache: yes
+
+
+    - name: Дождаться освобождения dpkg (если занят)
+      shell: |
+        while fuser /var/lib/dpkg/lock >/dev/null 2>&1; do
+          echo "Ждём освобождения dpkg..."
+          sleep 5
+        done
+      changed_when: false
+
+
+    - name: Установить kubelet, kubeadm, kubectl
+      apt:
+        name:
+          - kubelet
+          - kubeadm
+          - kubectl
+        state: present
+
+    - name: Заморозить версии Kubernetes пакетов
+      command: apt-mark hold kubelet kubeadm kubectl

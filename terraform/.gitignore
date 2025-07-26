@@ -1,0 +1,10 @@
+private.auto.tfvars
+.terraform
+terraform.tfstate
+*.tfvars
+terraform.tfstate.backup
+tfstate_backup.json
+.terraform.lock.hcl
+public_key.priv
+public_key.pub
+

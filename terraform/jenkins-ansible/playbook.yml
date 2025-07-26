@@ -1,0 +1,83 @@
+- name: Install Jenkins and Docker on VM
+  hosts: masters
+  become: true
+  vars_files:
+    - vars.yml
+
+  tasks:
+    - name: Обновляем кэш репозитория один раз
+      apt:
+        update_cache: yes
+
+    - name: Устанавливаем зависимости
+      apt:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - openjdk-17-jdk
+        - gnupg
+        - unzip
+        - curl
+        - git
+
+    - name: Добавляем ключ репозитория Jenkins
+      apt_key:
+        url: https://pkg.jenkins.io/debian-stable/jenkins.io.key
+        state: present
+
+    - name: Добавляем репозиторий Jenkins
+      apt_repository:
+        repo: deb https://pkg.jenkins.io/debian-stable binary/
+        state: present
+
+    - name: Установка Jenkins
+      apt:
+        name: jenkins
+        state: present
+
+    - name: Запуск и включение сервиса Jenkins
+      systemd:
+        name: jenkins
+        enabled: yes
+        state: started
+
+    - name: Ожидаем готовности Jenkins
+      wait_for:
+        port: "{{ jenkins_http_port }}"
+        timeout: 120  
+ 
+ # Установка Docker
+    - name: Добавляем официальный GPG-ключ Docker
+      apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Добавляем репозиторий Docker
+      apt_repository:
+        repo: deb [arch=amd64] https://download.docker.com/linux/ubuntu focal stable
+        state: present
+        filename: docker
+
+    - name: Обновляем кэш после добавления репозитория Docker
+      apt:
+        update_cache: yes
+
+    - name: Устанавливаем Docker Engine
+      apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: present
+
+    - name: Убедиться, что сервис Docker запущен и включён
+      systemd:
+        name: docker
+        enabled: yes
+        state: started
+
+    - name: Добавляем пользователя Jenkins в группу docker
+      user:
+        name: jenkins
+        groups: docker
+        append: yes
